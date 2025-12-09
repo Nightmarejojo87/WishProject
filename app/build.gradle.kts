@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    alias(libs.plugins.google.gms.google.services)
 } // <--- Assure-toi que cette accolade est bien là !
 
 android {
@@ -62,12 +63,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-
-    // --- ROOM DATABASE (IMPORTANT) ---
-    val room_version = "2.6.1"
-    implementation("androidx.room:room-runtime:$room_version")
-    implementation("androidx.room:room-ktx:$room_version")
-    ksp("androidx.room:room-compiler:$room_version")
+    implementation(libs.firebase.firestore)
 
     // --- TESTS ---
     testImplementation("junit:junit:4.13.2")
@@ -77,4 +73,14 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // --- FIREBASE (Ajoute ça) ---
+    // Le BoM permet de gérer les versions automatiquement
+    implementation(platform("com.google.firebase:firebase-bom:32.7.1"))
+
+    // La librairie Firestore en version KOTLIN (c'est le -ktx qui est important)
+    implementation("com.google.firebase:firebase-firestore-ktx")
+
+    // Optionnel mais utile
+    implementation("com.google.firebase:firebase-analytics-ktx")
 }

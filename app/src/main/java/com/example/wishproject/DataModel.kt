@@ -1,67 +1,69 @@
 package com.example.wishproject
 
-import android.content.Context
-import androidx.room.*
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
 
-// --- LES TABLES ---
-@Entity(tableName = "users")
-data class User(
-    @PrimaryKey(autoGenerate = true) val userId: Int = 0,
-    val name: String
+// --- DONNÉES ---
+data class WishList(
+    val listId: String = "",
+    val ownerId: String = "",
+    val title: String = ""
 )
 
-@Entity(tableName = "items")
 data class WishItem(
-    @PrimaryKey(autoGenerate = true) val itemId: Int = 0,
-    val ownerId: Int,
-    val name: String,
-    val link: String,
+    val itemId: String = "",
+    val listId: String = "",
+    val name: String = "",
+    val link: String = "",
     val isReserved: Boolean = false,
-    val reservedByUserId: Int? = null
+    val reservedByUserId: String? = null
 )
 
-// --- LE DAO ---
-@Dao
-interface WishDao {
-    @Query("SELECT * FROM users")
-    fun getAllUsers(): Flow<List<User>>
+// --- REPOSITORY ---
+class FirestoreRepository {
+    private val db = FirebaseFirestore.getInstance()
 
-    @Insert
-    suspend fun insertUser(user: User)
-
-    @Query("SELECT * FROM items WHERE ownerId = :ownerId")
-    fun getItemsForUser(ownerId: Int): Flow<List<WishItem>>
-
-    @Insert
-    suspend fun insertItem(item: WishItem)
-
-    @Update
-    suspend fun updateItem(item: WishItem)
-
-    @Delete
-    suspend fun deleteItem(item: WishItem)
-}
-
-// --- LA CONFIGURATION ---
-@Database(entities = [User::class, WishItem::class], version = 1, exportSchema = false)
-abstract class AppDatabase : RoomDatabase() {
-    abstract fun wishDao(): WishDao
-
-    companion object {
-        @Volatile
-        private var INSTANCE: AppDatabase? = null
-
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "wishlist_database"
-                ).build()
-                INSTANCE = instance
-                instance
-            }
-        }
+    // 1. GESTION LISTES
+    fun createList(ownerId: String, title: String) {
+        val newDoc = db.collection("lists").document()
+        newDoc.set(WishList(listId = newDoc.id, ownerId = ownerId, title = title))
     }
+
+    // Récupérer une liste spécifique via son ID (Pour le partage)
+    suspend fun getListById(listId: String): WishList? {
+        return try {
+            val snapshot = db.collection("lists").document(listId).get().await()
+            snapshot.toObject(WishList::class.java)
+        } catch (e: Exception) { null }
+    }
+
+    fun getListsForUser(userId: String): Flow<List<WishList>> = callbackFlow {
+        val subscription = db.collection("lists").whereEqualTo("ownerId", userId)
+            .addSnapshotListener { s, _ -> if (s != null) trySend(s.toObjects(WishList::class.java)) }
+        awaitClose { subscription.remove() }
+    }
+
+    fun deleteList(listId: String) { db.collection("lists").document(listId).delete() }
+
+    // 2. GESTION ITEMS
+    fun addItem(listId: String, name: String, link: String) {
+        val newDoc = db.collection("items").document()
+        newDoc.set(WishItem(itemId = newDoc.id, listId = listId, name = name, link = link))
+    }
+
+    // Pour réserver un objet
+    fun updateItem(item: WishItem) {
+        if (item.itemId.isNotEmpty()) db.collection("items").document(item.itemId).set(item)
+    }
+
+    fun getItemsInList(listId: String): Flow<List<WishItem>> = callbackFlow {
+        val subscription = db.collection("items").whereEqualTo("listId", listId)
+            .addSnapshotListener { s, _ -> if (s != null) trySend(s.toObjects(WishItem::class.java)) }
+        awaitClose { subscription.remove() }
+    }
+
+    fun deleteItem(itemId: String) { db.collection("items").document(itemId).delete() }
 }
